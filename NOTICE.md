@@ -24,3 +24,10 @@
    auto-closes the parent tab after 3s (opt-out `PI_HANDOFF_KEEP_TAB=1`),
    voluntary reason keeps it marked `[handed-off]` — and parent-tab
    retirement.
+5. `src/index.ts`: in-flight subagent-run adoption section in budget
+   handoff docs, reading pi-subagents on-disk run state
+   (`PI_SUBAGENTS_TEMP_ROOT` or `~/…/pi-subagents-uid-*/async-subagent-runs
+   /<runId>/status.json`): one line per still-active (`queued`/`running`)
+   run with a `bg_wait` recovery line, `None at handoff time.` when none,
+   and an unreadable-state hint pointing at the session-side
+   `subagent-artifacts` directory when the runs root cannot be listed.

@@ -20,10 +20,10 @@ import {
   sessionEntryToContextMessages,
 } from "@earendil-works/pi-coding-agent"
 import { completeText } from "./complete-text.js"
-import { existsSync } from "node:fs"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { existsSync, type Dirent } from "node:fs"
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 const HANDOFF_SKILL_COMMAND = "skill:handoff"
 const HANDOFF_BRIDGE_COMMAND = "__pi-handoff-session"
@@ -415,12 +415,170 @@ async function retireParentInHerdr(options: {
   return self?.tabId
 }
 
+export type InflightRun = {
+  runId: string
+  mode: string
+  state: string
+  startedAt: number
+  lastActivityAt: number
+  agentName?: string
+}
+
+export class SubagentRunsUnreadableError extends Error {
+  readonly artifactsDir: string
+
+  constructor(artifactsDir: string) {
+    super("Subagent run state unreadable")
+    this.name = "SubagentRunsUnreadableError"
+    this.artifactsDir = artifactsDir
+  }
+}
+
+const SUBAGENT_RUNS_DIR_NAME = "async-subagent-runs"
+const ACTIVE_SUBAGENT_RUN_STATES = new Set(["queued", "running"])
+const SUBAGENT_RUN_STATUS_REREAD_DELAY_MS = 50
+const AGENT_NAME_KEYS = [
+  "agentName",
+  "agentDisplayName",
+  "agent",
+  "name",
+] as const
+
+function resolveSubagentRunsRoot(): string {
+  const envRoot = process.env["PI_SUBAGENTS_TEMP_ROOT"]
+  if (envRoot) return join(envRoot, SUBAGENT_RUNS_DIR_NAME)
+  return join(
+    tmpdir(),
+    `pi-subagents-uid-${process.getuid?.() ?? 0}`,
+    SUBAGENT_RUNS_DIR_NAME,
+  )
+}
+
+function sessionArtifactsDir(sessionFilePath: string | undefined): string {
+  if (!sessionFilePath) {
+    return "~/.pi/agent/sessions/<project>/subagent-artifacts/"
+  }
+  return join(dirname(sessionFilePath), "subagent-artifacts")
+}
+
+async function readSubagentRunStatus(
+  statusPath: string,
+): Promise<Record<string, unknown> | undefined> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let raw: string
+    try {
+      raw = await readFile(statusPath, "utf8")
+    } catch {
+      // Retention deletes runs between listing and read.
+      return undefined
+    }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      // Atomic writes rename into place; a torn read is retried once.
+      if (attempt === 2) return undefined
+    }
+    await delay(SUBAGENT_RUN_STATUS_REREAD_DELAY_MS)
+  }
+  return undefined
+}
+
+function readAgentName(record: Record<string, unknown>): string | undefined {
+  for (const key of AGENT_NAME_KEYS) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+/**
+ * Collects background subagent runs that pi-subagents records as still active
+ * (state `queued` or `running`), scoped to `sessionFilePath` when provided; a
+ * session-scoped empty result is returned even when other sessions have active
+ * runs. Individual unreadable runs are skipped; throws
+ * {@link SubagentRunsUnreadableError} when the runs root itself cannot be
+ * listed — render the recovery hint from `error.artifactsDir`.
+ */
+export async function collectInflightRuns(
+  sessionFilePath: string | undefined,
+): Promise<InflightRun[]> {
+  const runsRoot = resolveSubagentRunsRoot()
+  let dirents: Dirent[]
+  try {
+    dirents = await readdir(runsRoot, { withFileTypes: true })
+  } catch {
+    throw new SubagentRunsUnreadableError(sessionArtifactsDir(sessionFilePath))
+  }
+
+  const runs: InflightRun[] = []
+  for (const dirent of dirents) {
+    if (!dirent.isDirectory() || dirent.name.startsWith(".")) continue
+    const record = await readSubagentRunStatus(
+      join(runsRoot, dirent.name, "status.json"),
+    )
+    if (!record) continue
+    const { state, mode, startedAt, lastActivityAt } = record
+    if (
+      typeof state !== "string" ||
+      !ACTIVE_SUBAGENT_RUN_STATES.has(state) ||
+      typeof mode !== "string" ||
+      typeof startedAt !== "number" ||
+      typeof lastActivityAt !== "number"
+    ) {
+      continue
+    }
+    if (
+      sessionFilePath !== undefined &&
+      record["sessionId"] !== sessionFilePath
+    ) {
+      continue
+    }
+    const agentName = readAgentName(record)
+    runs.push({
+      runId: typeof record["runId"] === "string" ? record["runId"] : dirent.name,
+      mode,
+      state,
+      startedAt,
+      lastActivityAt,
+      ...(agentName ? { agentName } : {}),
+    })
+  }
+
+  return runs.sort((a, b) => a.startedAt - b.startedAt)
+}
+
+function formatInflightRun(run: InflightRun): string {
+  const agentName = run.agentName ? ` | ${run.agentName}` : ""
+  return [
+    `- ${run.runId} | ${run.mode} | ${run.state} | started ${new Date(run.startedAt).toISOString()} | last activity ${new Date(run.lastActivityAt).toISOString()}${agentName}`,
+    `  recovery: reply to the supervisor request first, then wait with bg_wait({ id: "${run.runId}" }); do not resume or launch a replacement while any child remains detached.`,
+  ].join("\n")
+}
+
+async function buildInflightRunsSection(
+  sessionFilePath: string | undefined,
+): Promise<string> {
+  let body: string
+  try {
+    const runs = await collectInflightRuns(sessionFilePath)
+    body =
+      runs.length === 0
+        ? "None at handoff time."
+        : runs.map(formatInflightRun).join("\n")
+  } catch (error) {
+    if (!(error instanceof SubagentRunsUnreadableError)) throw error
+    body = `Subagent run state unreadable — check parent session artifacts at ${error.artifactsDir}.`
+  }
+  return ["## In-flight subagent runs", "", body].join("\n")
+}
+
 function buildDocumentWithMetadata(options: {
   generated: string
   focus: string
   handoffSkillPath: string
   parentSession: string | undefined
   reason: HandoffReason
+  inflightRunsSection?: string
 }): string {
   const previousSession = options.parentSession
     ? [
@@ -451,6 +609,7 @@ function buildDocumentWithMetadata(options: {
     "- Skill: `handoff`",
     `- Source: \`${options.handoffSkillPath}\``,
     "",
+    ...(options.inflightRunsSection ? [options.inflightRunsSection, ""] : []),
     options.generated.trim(),
     "",
   ].join("\n")
@@ -587,12 +746,17 @@ async function runHandoff(
   const baseSessionName = await resolveHandoffBaseName(pi, ctx, messages, focus)
   const sessionName = formatHandoffSessionName(baseSessionName)
   const handoffPath = await nextHandoffPath(baseSessionName)
+  const inflightRunsSection =
+    reason === "budget"
+      ? await buildInflightRunsSection(parentSession)
+      : undefined
   const document = buildDocumentWithMetadata({
     generated,
     focus,
     handoffSkillPath: handoffSkill.path,
     parentSession,
     reason,
+    inflightRunsSection,
   })
   await writeFile(handoffPath, document, "utf8")
 
