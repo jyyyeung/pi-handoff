@@ -1,10 +1,18 @@
 {
-  "name": "@local/inspectec-handoff",
-  "version": "2.2.2-local.1",
-  "description": "Vendored @tifan/pi-handoff 2.2.2 + @tifan/pi-rename 0.6.0 naming core with local fixes: synthetic-message filtering, first-message fallback, focus/parent-name child naming, configurable session_query model. Loaded from this path; pi does not modify local packages.",
+  "name": "pi-handoff",
+  "version": "2.4.0",
+  "description": "Reliable session handoffs for the pi coding agent: verified successor-prompt delivery, parent-tab retirement, budget-aware auto-close, and in-flight subagent-run adoption in handoff docs. Community fork of @tifan/pi-handoff.",
   "license": "MIT",
   "type": "module",
-  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "handoff",
+    "session",
+    "coding-agent",
+    "multi-agent",
+    "subagents"
+  ],
   "engines": {
     "node": ">=20"
   },

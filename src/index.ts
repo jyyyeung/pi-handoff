@@ -33,6 +33,17 @@ export function formatHandoffSessionName(baseName: string): string {
   return `${HANDOFF_SESSION_PREFIX}${baseName}`
 }
 
+const HANDED_OFF_SESSION_PREFIX = "[handed-off] "
+const HANDOFF_TAB_CLOSE_DELAY_MS = 3_000
+
+export type HandoffReason = "budget" | "voluntary"
+
+const HANDOFF_REASON_ARG_RE = /^--reason=(budget|voluntary)(?:\s+|$)/
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 const HANDOFF_SYSTEM_PROMPT = `You are a context transfer assistant. Generate a handoff markdown document for a fresh coding agent.
 
 Follow the provided handoff skill instructions as the document policy.
@@ -271,17 +282,137 @@ async function startHandoffInHerdr(options: {
     ),
   )
 
-  const promptedAgent = await options.pi.exec("herdr", [
+  await promptHerdrAgentVerified(
+    options.pi,
+    agentName,
+    buildNewSessionPrompt(options.handoffPath),
+  )
+}
+
+const HANDOFF_PROMPT_TIMEOUT_MS = 20_000
+
+function isEngagedHerdrStatus(status: unknown): boolean {
+  return status === "working" || status === "blocked" || status === "done"
+}
+
+async function herdrAgentEngaged(
+  pi: ExtensionAPI,
+  agentName: string,
+): Promise<boolean> {
+  const got = await pi.exec("herdr", ["agent", "get", agentName], {
+    timeout: 5_000,
+  })
+  if (got.code !== 0) return false
+  try {
+    const status = (
+      JSON.parse(got.stdout) as {
+        result?: { agent?: { agent_status?: unknown } }
+      }
+    )?.result?.agent?.agent_status
+    return isEngagedHerdrStatus(status)
+  } catch {
+    return false
+  }
+}
+
+async function promptHerdrAgentVerified(
+  pi: ExtensionAPI,
+  agentName: string,
+  text: string,
+): Promise<void> {
+  const promptArgs = [
     "agent",
     "prompt",
     agentName,
-    buildNewSessionPrompt(options.handoffPath),
-  ])
-  if (promptedAgent.code !== 0) {
-    throw new Error(
-      `Could not send the handoff prompt: ${getCommandError(promptedAgent.stdout, promptedAgent.stderr)}`,
-    )
+    text,
+    "--wait",
+    "--until",
+    "working",
+    "--timeout",
+    String(HANDOFF_PROMPT_TIMEOUT_MS),
+  ]
+  const attempts = 2
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await pi.exec("herdr", promptArgs, { timeout: 30_000 })
+    if (result.code === 0) return
+    // A non-zero exit can also mean the final-state match timed out on an
+    // agent that already took the prompt; trust the observed status over the
+    // exit code before retrying.
+    if (await herdrAgentEngaged(pi, agentName)) return
+    if (attempt === attempts) {
+      throw new Error(
+        `Could not deliver the handoff prompt: ${getCommandError(result.stdout, result.stderr)}`,
+      )
+    }
   }
+}
+
+type HerdrSelfAgent = { name?: string; tabId?: string }
+
+async function findHerdrSelfAgent(
+  pi: ExtensionAPI,
+  parentSession: string,
+): Promise<HerdrSelfAgent | undefined> {
+  const listed = await pi.exec("herdr", ["agent", "list"], { timeout: 5_000 })
+  if (listed.code !== 0) return undefined
+  try {
+    const agents = (
+      JSON.parse(listed.stdout) as {
+        result?: {
+          agents?: Array<{
+            name?: unknown
+            tab_id?: unknown
+            agent_session?: { value?: unknown }
+          }>
+        }
+      }
+    )?.result?.agents
+    const self = agents?.find(
+      (candidate) => candidate?.agent_session?.value === parentSession,
+    )
+    if (!self) return undefined
+    return {
+      name: typeof self.name === "string" ? self.name : undefined,
+      tabId: typeof self.tab_id === "string" ? self.tab_id : undefined,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+async function retireParentInHerdr(options: {
+  pi: ExtensionAPI
+  parentSession: string
+  baseSessionName: string
+}): Promise<string | undefined> {
+  const currentName = options.pi.getSessionName()?.trim()
+  const stripped = (currentName ?? options.baseSessionName)
+    .replace(HANDED_OFF_SESSION_PREFIX, "")
+    .replace(HANDOFF_SESSION_PREFIX, "")
+  try {
+    options.pi.setSessionName(`${HANDED_OFF_SESSION_PREFIX}${stripped}`)
+  } catch (error) {
+    console.error("Could not mark the handed-off session name:", error)
+  }
+
+  const self = await findHerdrSelfAgent(options.pi, options.parentSession)
+  if (self?.name) {
+    try {
+      await options.pi.exec(
+        "herdr",
+        [
+          "agent",
+          "rename",
+          self.name,
+          `handed-off-${self.name.replace(/^handoff-/, "")}`,
+        ],
+        { timeout: 5_000 },
+      )
+    } catch (error) {
+      console.error("Could not rename the handed-off agent:", error)
+    }
+  }
+  return self?.tabId
 }
 
 function buildDocumentWithMetadata(options: {
@@ -289,6 +420,7 @@ function buildDocumentWithMetadata(options: {
   focus: string
   handoffSkillPath: string
   parentSession: string | undefined
+  reason: HandoffReason
 }): string {
   const previousSession = options.parentSession
     ? [
@@ -296,11 +428,13 @@ function buildDocumentWithMetadata(options: {
         "",
         `- Session file: \`${options.parentSession}\``,
         "- If details are missing, use `session_query` with that session file.",
+        `- Handoff reason: ${options.reason}`,
       ].join("\n")
     : [
         "## Previous session",
         "",
         "- No persisted previous session file was available.",
+        `- Handoff reason: ${options.reason}`,
       ].join("\n")
 
   return [
@@ -383,6 +517,7 @@ async function runHandoff(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   focus: string,
+  reason: HandoffReason = "voluntary",
 ): Promise<void> {
   if (!ctx.model) {
     ctx.ui.notify("No model selected.", "error")
@@ -457,6 +592,7 @@ async function runHandoff(
     focus,
     handoffSkillPath: handoffSkill.path,
     parentSession,
+    reason,
   })
   await writeFile(handoffPath, document, "utf8")
 
@@ -470,7 +606,28 @@ async function runHandoff(
       sessionName,
       workspaceId: herdrWorkspaceId,
     })
-    ctx.ui.notify(`Handoff opened in a new Herdr tab: ${handoffPath}`, "info")
+    const tabId = parentSession
+      ? await retireParentInHerdr({ pi, parentSession, baseSessionName })
+      : undefined
+    if (reason === "budget" && process.env["PI_HANDOFF_KEEP_TAB"] !== "1") {
+      ctx.ui.notify(
+        `Handoff opened in a new Herdr tab: ${handoffPath}. Budget wrap-up: this tab closes shortly.`,
+        "info",
+      )
+      await delay(HANDOFF_TAB_CLOSE_DELAY_MS)
+      if (tabId) {
+        try {
+          await pi.exec("herdr", ["tab", "close", tabId], { timeout: 5_000 })
+        } catch (error) {
+          console.error("Could not close the handed-off tab:", error)
+        }
+      }
+      return
+    }
+    ctx.ui.notify(
+      `Handoff opened in a new Herdr tab: ${handoffPath}. This tab is marked [handed-off].`,
+      "info",
+    )
     return
   }
 
@@ -490,9 +647,13 @@ export default function (pi: ExtensionAPI): void {
   pi.registerCommand(HANDOFF_BRIDGE_COMMAND, {
     description: "Internal handoff bridge; use the -handoff marker instead.",
     handler: async (args, ctx) => {
-      const focus = args.trim() || DEFAULT_HANDOFF_FOCUS
+      const reasonMatch = HANDOFF_REASON_ARG_RE.exec(args)
+      const reason = (reasonMatch?.[1] as HandoffReason | undefined) ?? "voluntary"
+      const focus = (
+        reasonMatch ? args.slice(reasonMatch[0].length) : args
+      ).trim() || DEFAULT_HANDOFF_FOCUS
       try {
-        await runHandoff(pi, ctx, focus)
+        await runHandoff(pi, ctx, focus, reason)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error("Handoff session failed:", error)

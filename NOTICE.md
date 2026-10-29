@@ -18,8 +18,9 @@
    first-message fallback.
 3. `src/session-query.ts`: `session_query` model resolves from the
    configured rename model (`~/.pi/agent/extensions/pi-rename.json`), then
-   the session model — upstream hardcoded unauthenticated openai-codex.
-4. `resolveHandoffBaseName` exported for tests.
-
-Upstream patches for (1)/(2) live in `~/.pi/agent/patches/` as reference
-diffs; this package is the canonical copy.
+   the session model.
+4. `src/index.ts`: verified prompt delivery (herdr --wait + status
+   cross-check + 1 retry), reason-tagged handoffs — budget reason
+   auto-closes the parent tab after 3s (opt-out `PI_HANDOFF_KEEP_TAB=1`),
+   voluntary reason keeps it marked `[handed-off]` — and parent-tab
+   retirement.
