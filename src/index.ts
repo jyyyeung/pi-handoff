@@ -56,6 +56,10 @@ Requirements:
 - Reference existing artifacts by path or URL instead of duplicating their content.
 - Redact sensitive information such as API keys, passwords, tokens, and personally identifiable information.
 - Keep it concise and actionable.
+- Include a "Verify first" section near the top of the document. List only the exact one-line commands the next session should run before trusting this document's state claims: git log and git status for every touched repository, the task board, pipeline or CI status, and the live-session inventory. Commands only, no prose.
+- Include a "Governing decisions" section listing every binding owner or user decision that constrains the next session, including decisions made in sibling or concurrent sessions. Put each decision on one line with the decision, its source (who ruled, which session or thread), and the date. If there are none, the section body is exactly \`None recorded.\`
+- Verify every checkable factual claim — branch state, commit SHAs, task IDs, agent or model names, file paths, pipeline or build status, and any landed, deployed, or green assertion — before stating it as fact. Attach the exact command used to verify the claim and the observed result inline in backticks on the same line or directly beneath it. If a claim could not be verified from the supplied conversation and session metadata, mark it \`UNVERIFIED\`; never present unverified state as fact.
+- Keep every section terse for token economy: commands and one-line facts only, with no narrative padding and no restating of file contents; reference artifacts by path.
 - Output only markdown for the handoff document. Do not include a preamble or closing note.`
 
 type HandoffSkill = {

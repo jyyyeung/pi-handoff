@@ -1,6 +1,6 @@
 {
   "name": "pi-handoff",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Reliable session handoffs for the pi coding agent: verified successor-prompt delivery, parent-tab retirement, budget-aware auto-close, and in-flight subagent-run adoption in handoff docs. Community fork of @tifan/pi-handoff.",
   "license": "MIT",
   "type": "module",

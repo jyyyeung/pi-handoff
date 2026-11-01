@@ -31,3 +31,11 @@
    run with a `bg_wait` recovery line, `None at handoff time.` when none,
    and an unreadable-state hint pointing at the session-side
    `subagent-artifacts` directory when the runs root cannot be listed.
+6. `src/index.ts`: extended the `HANDOFF_SYSTEM_PROMPT` requirements so
+   generated handoff docs carry a verify-first section of exact one-line
+   commands near the top, a "Governing decisions" section listing every
+   binding owner decision with its source and date (or `None recorded.`),
+   inline verification evidence (the exact command and observed result)
+   for every checkable factual claim with an explicit `UNVERIFIED` marker
+   when a claim could not be verified, and a compactness rule (commands and
+   one-line facts only) for successor token economy.

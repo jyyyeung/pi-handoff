@@ -9,6 +9,8 @@ Reliable session handoffs for the pi coding agent. When a session ends, pi-hando
 - **Budget-aware auto-close** — when the handoff reason is budget exhaustion, the parent tab auto-closes after 3 seconds. Opt out with `PI_HANDOFF_KEEP_TAB=1`. Voluntary handoffs keep the parent tab open.
 - **Smart child naming** — naming core from pi-rename: explicit focus > parent session name (prefix stripped) > rename model > first real user message fallback, with synthetic-message filtering.
 - **Configurable session_query model** — the `session_query` tool resolves its model from the configured rename model, then the session model.
+- **Verify-first checklist** — generated handoff docs open with a short list of exact one-line commands the successor runs before trusting the document's state claims (repo status, task board, CI, live sessions).
+- **Governing decisions in generated docs** — every binding owner decision that constrains the next session is listed with its source and date, including decisions made in sibling sessions, or marked `None recorded.`
 
 ## Install
 
