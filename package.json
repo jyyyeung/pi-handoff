@@ -1,9 +1,16 @@
 {
-  "name": "pi-handoff",
-  "version": "2.5.1",
+  "name": "@jyyyeung/pi-handoff",
+  "version": "0.1.0",
   "description": "Reliable session handoffs for the pi coding agent: verified successor-prompt delivery, parent-tab retirement, budget-aware auto-close, and in-flight subagent-run adoption in handoff docs. Community fork of @tifan/pi-handoff.",
   "license": "MIT",
   "type": "module",
+  "files": [
+    "src/",
+    "NOTICE.md",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -13,21 +20,26 @@
     "multi-agent",
     "subagents"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jyyyeung/pi-handoff.git"
+  },
+  "homepage": "https://github.com/jyyyeung/pi-handoff#readme",
+  "bugs": {
+    "url": "https://github.com/jyyyeung/pi-handoff/issues"
+  },
   "engines": {
     "node": ">=20"
   },
-  "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
+  "publishConfig": {
+    "access": "public"
   },
-  "pi": {
-    "extensions": [
-      "./src/index.ts",
-      "./src/session-query.ts"
-    ]
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": ">=1.3.0",
+    "@earendil-works/pi-ai": ">=1.3.0",
+    "@earendil-works/pi-coding-agent": ">=1.3.0",
+    "@earendil-works/pi-tui": ">=1.3.0",
+    "typebox": ">=0.32.0"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^1.3.0",
@@ -38,7 +50,14 @@
     "typebox": "*",
     "typescript": "^5.7.0"
   },
+  "pi": {
+    "extensions": [
+      "./src/index.ts",
+      "./src/session-query.ts"
+    ]
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
   }
 }

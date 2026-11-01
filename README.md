@@ -28,7 +28,7 @@ The package is usable on a plain pi install: nothing below the herdr row is requ
 
 ```bash
 pi install ./pi-handoff      # local checkout
-pi install npm:pi-handoff    # published package
+pi install npm:@jyyyeung/pi-handoff   # published package
 ```
 
 Then restart pi (or `/reload`). If you prefer hand-editing, add the package
