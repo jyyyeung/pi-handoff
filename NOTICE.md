@@ -39,3 +39,12 @@
    for every checkable factual claim with an explicit `UNVERIFIED` marker
    when a claim could not be verified, and a compactness rule (commands and
    one-line facts only) for successor token economy.
+7. `src/index.ts`: a missing `handoff` skill is no longer fatal. The
+   extension used to refuse to run unless a skill named exactly `handoff` was
+   discoverable; it now falls back to an exported built-in policy
+   (`BUILT_IN_HANDOFF_SKILL`) and warns once, so the package works straight
+   after `pi install`.
+8. `src/index.ts`: `getHerdrWorkspaceId()` returns `undefined` instead of
+   throwing `Herdr workspace context is unavailable` when `HERDR_ENV=1` but
+   `HERDR_WORKSPACE_ID` is unset — the caller then takes the in-process
+   `ctx.newSession` path instead of failing the whole handoff.

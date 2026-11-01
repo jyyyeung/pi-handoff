@@ -67,6 +67,38 @@ type HandoffSkill = {
   instructions: string
 }
 
+/**
+ * Policy used when no `handoff` skill is discoverable. The extension used to
+ * refuse to run at all in that case ("install a skill named exactly `handoff`,
+ * then /reload"), which made the package unusable straight after install.
+ * The built-in policy keeps the document structure the successor needs; a real
+ * skill still wins, so teams can customize without forking this file.
+ */
+export const BUILT_IN_HANDOFF_SKILL: HandoffSkill = {
+  path: "(built in: pi-handoff default handoff policy)",
+  instructions: [
+    "Write a handoff document for a fresh coding agent that will continue this work.",
+    "",
+    "Required sections, in order:",
+    "1. `# Handoff: <focus>` — one line naming what the next session is for.",
+    "2. `## Verify first` — exact one-line commands only (no prose): git status and git log per touched repo, the task board, CI/pipeline status, live-session inventory.",
+    "3. `## State` — what is done, what is in flight, with SHAs, paths, task IDs.",
+    "4. `## Governing decisions` — every binding decision, one line each, with source and date; if none, exactly `None recorded.`",
+    "5. `## Next steps` — ordered, concrete, smallest safe increments first.",
+    "6. `## Suggested skills` — skills the successor should load.",
+    "7. `## Open questions` — what is unverified or undecided.",
+    "",
+    "Rules:",
+    "- Use only the supplied conversation and session metadata; never invent state.",
+    "- Mark anything you could not verify as `UNVERIFIED` instead of asserting it.",
+    "- Attach the exact checking command inline in backticks for every factual claim about state (branch, SHA, test/CI result, path).",
+    "- Reference artifacts by path or URL; do not duplicate file contents.",
+    "- Redact secrets, tokens, credentials, and personal data.",
+    "- Be terse: commands and one-line facts, no narrative padding.",
+    "- Output markdown only, with no preamble or closing note.",
+  ].join("\n"),
+}
+
 async function loadHandoffSkill(
   pi: ExtensionAPI,
 ): Promise<HandoffSkill | undefined> {
@@ -154,11 +186,10 @@ type HerdrTabCreateResponse = {
 function getHerdrWorkspaceId(): string | undefined {
   if (process.env["HERDR_ENV"] !== "1") return undefined
 
-  const workspaceId = process.env["HERDR_WORKSPACE_ID"]?.trim()
-  if (!workspaceId) {
-    throw new Error("Herdr workspace context is unavailable")
-  }
-  return workspaceId
+  // A herdr-flavoured environment without a workspace id used to throw, which
+  // aborted the whole handoff before the in-process fallback could run. Treat
+  // it as "not available here" and let the caller take the plain path.
+  return process.env["HERDR_WORKSPACE_ID"]?.trim() || undefined
 }
 
 function getHerdrRootPaneId(stdout: string): string | undefined {
@@ -687,14 +718,14 @@ async function runHandoff(
     return
   }
 
-  const handoffSkill = await loadHandoffSkill(pi)
-  if (!handoffSkill) {
+  const discoveredSkill = await loadHandoffSkill(pi)
+  if (!discoveredSkill) {
     ctx.ui.notify(
-      "Handoff requires a discoverable skill named exactly `handoff`. Install it, then run /reload.",
-      "error",
+      "No `handoff` skill found — using the built-in handoff policy.",
+      "warning",
     )
-    return
   }
+  const handoffSkill = discoveredSkill ?? BUILT_IN_HANDOFF_SKILL
 
   const messages = ctx.sessionManager
     .buildContextEntries()
