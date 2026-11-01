@@ -48,3 +48,9 @@
    throwing `Herdr workspace context is unavailable` when `HERDR_ENV=1` but
    `HERDR_WORKSPACE_ID` is unset — the caller then takes the in-process
    `ctx.newSession` path instead of failing the whole handoff.
+9. `src/backend.ts` (new, no imports): `resolveHandoffBackend()` reads
+   `PI_HANDOFF_BACKEND` so the successor-session backend can be pinned to the
+   dependency-free in-process path (`ctx.newSession`) even on a machine where the
+   external tab manager is available. Default `auto` keeps the tab backend only
+   when a workspace is detected; a missing workspace falls back with a warning
+   instead of failing the handoff.

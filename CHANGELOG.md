@@ -5,6 +5,22 @@ were the upstream `@tifan/pi-handoff` 2.2.2 tree; the local fork restarts its
 version line at 0.1.0 because it publishes under a different name
 (`@jyyyeung/pi-handoff`) and diverges from upstream.
 
+## 0.1.1
+
+### Added
+
+- `PI_HANDOFF_BACKEND` (`auto` | `in-process` | `tab`) selects how the successor
+  session starts. `in-process` is dependency-free and uses `ctx.newSession`;
+  `tab` uses the external tab manager; `auto` (the default) picks `tab` only when
+  a workspace is actually detected. Asking for `tab` without one warns and falls
+  back instead of failing.
+
+### Changed
+
+- README no longer reads as a tab-manager-only package: the backend table comes
+  first, features are split into "works everywhere" and "added by the tab
+  backend", and the tab manager is listed as optional in the prerequisites.
+
 ## 0.1.0
 
 Published as `@jyyyeung/pi-handoff`. Functional behaviour is the 2.5.1 tree

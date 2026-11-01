@@ -20,6 +20,10 @@ import {
   sessionEntryToContextMessages,
 } from "@earendil-works/pi-coding-agent"
 import { completeText } from "./complete-text.js"
+import { resolveHandoffBackend } from "./backend.js"
+
+export { resolveHandoffBackend } from "./backend.js"
+export type { HandoffBackend } from "./backend.js"
 import { existsSync, type Dirent } from "node:fs"
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -795,7 +799,15 @@ async function runHandoff(
   })
   await writeFile(handoffPath, document, "utf8")
 
-  const herdrWorkspaceId = getHerdrWorkspaceId()
+  const backend = resolveHandoffBackend()
+  const herdrWorkspaceId =
+    backend === "in-process" ? undefined : getHerdrWorkspaceId()
+  if (backend === "tab" && !herdrWorkspaceId) {
+    ctx.ui.notify(
+      "PI_HANDOFF_BACKEND=tab requested but no herdr workspace was detected — opening the successor session in-process instead.",
+      "warning",
+    )
+  }
   if (herdrWorkspaceId) {
     await startHandoffInHerdr({
       pi,

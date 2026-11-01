@@ -9,6 +9,7 @@ import {
   DEFAULT_RENAME_LANGUAGE,
   parseRenameLanguage,
 } from "../src/rename/language.ts"
+import { resolveHandoffBackend } from "../src/backend.ts"
 
 // The vendored naming core is pure; these are the smoke tests that make sure a
 // re-vendor from upstream cannot silently change what ends up in a session name
@@ -90,4 +91,29 @@ test("parseRenameLanguage: canonicalises and rejects junk", () => {
   assert.equal(parseRenameLanguage("not a language!!"), undefined)
   assert.equal(parseRenameLanguage(42), undefined)
   assert.equal(DEFAULT_RENAME_LANGUAGE, "en")
+})
+
+// Backend selection lives in its own import-free module so it is testable
+// without the pi runtime (see src/backend.ts).
+
+test("resolveHandoffBackend: defaults to auto", () => {
+  assert.equal(resolveHandoffBackend({}), "auto")
+  assert.equal(resolveHandoffBackend({ PI_HANDOFF_BACKEND: "  " }), "auto")
+  assert.equal(resolveHandoffBackend({ PI_HANDOFF_BACKEND: "nonsense" }), "auto")
+})
+
+test("resolveHandoffBackend: aliases for the dependency-free path", () => {
+  for (const value of ["in-process", "IN-PROCESS", " inprocess ", "session", "new-session"]) {
+    assert.equal(
+      resolveHandoffBackend({ PI_HANDOFF_BACKEND: value }),
+      "in-process",
+      value,
+    )
+  }
+})
+
+test("resolveHandoffBackend: aliases for the tab path", () => {
+  for (const value of ["tab", "herdr", " Terminal "]) {
+    assert.equal(resolveHandoffBackend({ PI_HANDOFF_BACKEND: value }), "tab", value)
+  }
 })
