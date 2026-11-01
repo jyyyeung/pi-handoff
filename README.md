@@ -82,7 +82,7 @@ On a machine without `herdr`, `auto` resolves to `in-process`: you still get the
 | Requirement | Needed for | If missing |
 |---|---|---|
 | pi ≥ 1.3 | everything | — |
-| Node ≥ 20 | everything | — |
+| Node ≥ 20 (22.6+ to run the tests) | everything | — |
 | A model with tool use | generating the handoff document | the handoff stops with "No model selected." |
 | a skill named `handoff` | customizing the document policy | the **built-in handoff policy** is used and a warning is shown |
 | `herdr` binary + `HERDR_ENV=1` + `HERDR_WORKSPACE_ID` | the tab backend only | `auto` falls back to the in-process backend; `PI_HANDOFF_BACKEND=tab` warns and falls back too |
