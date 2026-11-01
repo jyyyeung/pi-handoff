@@ -66,6 +66,9 @@ Two backends, same document. Pick with `PI_HANDOFF_BACKEND`:
 | `in-process` | writes the document, then opens a new pi session via `ctx.newSession` and sends it the handoff prompt | **no** |
 | `tab` | writes the document, then opens a real terminal tab and delivers the prompt into it, with delivery verified | yes — `herdr` (see below) |
 
+Accepted aliases: `inprocess` / `session` / `new-session` for `in-process`,
+`herdr` / `terminal` for `tab`. Anything else falls back to `auto`.
+
 On a machine without `herdr`, `auto` resolves to `in-process`: you still get the document and a successor session that has already received the prompt. The tab backend only changes *where* the successor runs and adds delivery verification, parent-tab retirement, and budget auto-close.
 
 ## Requirements
@@ -82,7 +85,10 @@ On a machine without `herdr`, `auto` resolves to `in-process`: you still get the
 
 - **Not a session store.** The document is a starting point for a new session, not a resumable snapshot; the successor's context is the document plus whatever it reads itself.
 - **Not a summarizer.** It targets continuation, not compression: decisions, state, and next steps, with the evidence needed to re-verify them.
-- **No automatic handoff on every turn.** `-handoff` is explicit, and budget-triggered handoffs only fire when the tab backend can report the budget.
+- **No automatic handoff on every turn.** Nothing in this package watches your
+  token usage. `-handoff` is explicit, and the only other entry point is the
+  `--reason=budget` form of the bridge command, which a budget-aware caller has
+  to invoke itself.
 - **Never invents state.** The document is generated from the conversation only; anything unverified lands under open questions.
 
 ## Troubleshooting
