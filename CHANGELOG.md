@@ -17,6 +17,9 @@ version line at 0.1.0 because it publishes under a different name
 
 ### Changed
 
+- README leads with the actual trigger (`-handoff <focus>`) and a quick
+  start; prerequisites are split into required vs tab-backend-only.
+- Package description no longer advertises the tab backend first.
 - README no longer reads as a tab-manager-only package: the backend table comes
   first, features are split into "works everywhere" and "added by the tab
   backend", and the tab manager is listed as optional in the prerequisites.
