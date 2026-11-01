@@ -28,13 +28,19 @@ Features added by the tab backend (`PI_HANDOFF_BACKEND=tab`, or `auto` on a herd
 ## Install
 
 ```bash
-pi install npm:@jyyyeung/pi-handoff   # published package
-pi install ./pi-handoff               # local checkout
+pi install npm:@jyyyeung/pi-handoff
 ```
 
 Then restart pi (or `/reload`). If you prefer hand-editing, add the package
 path to the `packages` list in `~/.pi/agent/settings.json` — but `pi install`
 is the supported path.
+
+From a local checkout:
+
+```bash
+pi install ./pi-handoff
+pi -e ./pi-handoff/src/index.ts
+```
 
 Optionally install a `handoff` skill (any pi skill whose name is exactly `handoff`) to replace the built-in document policy with your own.
 
