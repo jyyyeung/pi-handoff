@@ -1,6 +1,6 @@
 {
   "name": "@jyyyeung/pi-handoff",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Session handoffs for the pi coding agent: writes a handoff document and starts a successor session from it, on a plain pi install or in a new terminal tab. Community fork of @tifan/pi-handoff.",
   "license": "MIT",
   "type": "module",

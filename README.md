@@ -21,7 +21,7 @@ Features that work everywhere:
 
 Features added by the tab backend (`PI_HANDOFF_BACKEND=tab`, or `auto` on a herdr machine):
 
-- **Verified prompt delivery** — the prompt is sent through `herdr --wait` and cross-checked via status polling, with one automatic retry if delivery is not confirmed.
+- **Verified prompt delivery** — the prompt is submitted once and delivery is cross-checked via status polling. A re-send happens only when herdr rejected the submission before any input was sent; a slow-booting successor that misses the state transition never receives a duplicate prompt.
 - **Parent tab retirement** — the originating parent tab is marked `[handed-off]` so you can see at a glance that it has been superseded.
 - **Budget-aware auto-close** — when the handoff reason is budget exhaustion, the parent tab auto-closes after 3 seconds. Opt out with `PI_HANDOFF_KEEP_TAB=1`. Voluntary handoffs keep the parent tab open.
 

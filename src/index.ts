@@ -21,6 +21,14 @@ import {
 } from "@earendil-works/pi-coding-agent"
 import { completeText } from "./complete-text.js"
 import { resolveHandoffBackend } from "./backend.js"
+import {
+  delay,
+  getCommandError,
+  herdrAgentEngaged,
+  submitHerdrPrompt,
+  waitForEngagement,
+  type HerdrCommandResult,
+} from "./herdr-prompt.js"
 
 export { resolveHandoffBackend } from "./backend.js"
 export type { HandoffBackend } from "./backend.js"
@@ -43,10 +51,6 @@ const HANDOFF_TAB_CLOSE_DELAY_MS = 3_000
 export type HandoffReason = "budget" | "voluntary"
 
 const HANDOFF_REASON_ARG_RE = /^--reason=(budget|voluntary)(?:\s+|$)/
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 const HANDOFF_SYSTEM_PROMPT = `You are a context transfer assistant. Generate a handoff markdown document for a fresh coding agent.
 
@@ -206,16 +210,6 @@ function getHerdrRootPaneId(stdout: string): string | undefined {
   }
 }
 
-function getCommandError(stdout: string, stderr: string): string {
-  return stderr.trim() || stdout.trim() || "unknown error"
-}
-
-type HerdrCommandResult = {
-  code: number
-  stdout: string
-  stderr: string
-}
-
 const HERDR_AGENT_START_ATTEMPTS = 20
 const HERDR_AGENT_START_RETRY_DELAY_MS = 250
 
@@ -328,61 +322,26 @@ async function startHandoffInHerdr(options: {
   )
 }
 
-const HANDOFF_PROMPT_TIMEOUT_MS = 20_000
-
-function isEngagedHerdrStatus(status: unknown): boolean {
-  return status === "working" || status === "blocked" || status === "done"
-}
-
-async function herdrAgentEngaged(
-  pi: ExtensionAPI,
-  agentName: string,
-): Promise<boolean> {
-  const got = await pi.exec("herdr", ["agent", "get", agentName], {
-    timeout: 5_000,
-  })
-  if (got.code !== 0) return false
-  try {
-    const status = (
-      JSON.parse(got.stdout) as {
-        result?: { agent?: { agent_status?: unknown } }
-      }
-    )?.result?.agent?.agent_status
-    return isEngagedHerdrStatus(status)
-  } catch {
-    return false
-  }
-}
+const HANDOFF_PROMPT_SUBMIT_TIMEOUT_MS = 10_000
 
 async function promptHerdrAgentVerified(
   pi: ExtensionAPI,
   agentName: string,
   text: string,
 ): Promise<void> {
-  const promptArgs = [
-    "agent",
-    "prompt",
-    agentName,
-    text,
-    "--wait",
-    "--until",
-    "working",
-    "--timeout",
-    String(HANDOFF_PROMPT_TIMEOUT_MS),
-  ]
-  const attempts = 2
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const result = await pi.exec("herdr", promptArgs, { timeout: 30_000 })
-    if (result.code === 0) return
-    // A non-zero exit can also mean the final-state match timed out on an
-    // agent that already took the prompt; trust the observed status over the
-    // exit code before retrying.
-    if (await herdrAgentEngaged(pi, agentName)) return
-    if (attempt === attempts) {
-      throw new Error(
-        `Could not deliver the handoff prompt: ${getCommandError(result.stdout, result.stderr)}`,
-      )
-    }
+  const promptArgs = ["agent", "prompt", agentName, text]
+  await submitHerdrPrompt(
+    () =>
+      pi.exec("herdr", promptArgs, {
+        timeout: HANDOFF_PROMPT_SUBMIT_TIMEOUT_MS,
+      }),
+    () => herdrAgentEngaged(pi, agentName),
+  )
+  const engaged = await waitForEngagement(() => herdrAgentEngaged(pi, agentName))
+  if (!engaged) {
+    console.error(
+      `Handoff successor ${agentName} did not confirm the prompt; continuing without a re-send.`,
+    )
   }
 }
 
