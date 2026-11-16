@@ -29,6 +29,16 @@ import {
   waitForEngagement,
   type HerdrCommandResult,
 } from "./herdr-prompt.js"
+import {
+  buildWorkIdRosterLines,
+  buildWorkIdSeedPrompt,
+  claimWorkIdForSuccessor,
+  extractNextSessionFocus,
+  isWorkIdModeEnabled,
+  planWorkIdHandoff,
+  workIdRef,
+  type WorkIdPlan,
+} from "./workid.js"
 
 export { resolveHandoffBackend } from "./backend.js"
 export type { HandoffBackend } from "./backend.js"
@@ -244,6 +254,9 @@ async function startHandoffInHerdr(options: {
   parentSession: string | undefined
   sessionName: string
   workspaceId: string
+  workIdPlan?: WorkIdPlan
+  fallbackBaseName: () => Promise<string>
+  nextSessionFocus?: string
 }): Promise<void> {
   const childSessionManager = SessionManager.create(
     options.ctx.cwd,
@@ -262,6 +275,23 @@ async function startHandoffInHerdr(options: {
     flag: "wx",
   })
 
+  // Mode-on: claim the successor generation now that the child session path
+  // exists (claim-after-retire bumps to the planned generation). A failed
+  // claim keeps the handoff going on the derived (non-work-id) name only.
+  let successorName = options.sessionName
+  let workIdCommitted = false
+  if (options.workIdPlan) {
+    workIdCommitted = await claimWorkIdForSuccessor(options.workIdPlan, {
+      sessionId: childSessionPath,
+      sessionName: options.sessionName,
+      cwd: options.ctx.cwd,
+      startedAt: childSessionHeader.timestamp,
+    })
+    if (!workIdCommitted) {
+      successorName = formatHandoffSessionName(await options.fallbackBaseName())
+    }
+  }
+
   const createdTab = await options.pi.exec(
     "herdr",
     [
@@ -272,7 +302,7 @@ async function startHandoffInHerdr(options: {
       "--cwd",
       options.ctx.cwd,
       "--label",
-      options.sessionName,
+      successorName,
     ],
     { timeout: 5_000 },
   )
@@ -305,7 +335,7 @@ async function startHandoffInHerdr(options: {
         "--session",
         childSessionPath,
         "--name",
-        options.sessionName,
+        successorName,
         "--provider",
         model.provider,
         "--model",
@@ -318,7 +348,18 @@ async function startHandoffInHerdr(options: {
   await promptHerdrAgentVerified(
     options.pi,
     agentName,
-    buildNewSessionPrompt(options.handoffPath),
+    workIdCommitted && options.workIdPlan
+      ? buildWorkIdSeedPrompt({
+          handoffPath: options.handoffPath,
+          workId: options.workIdPlan.workId,
+          generation: options.workIdPlan.generation,
+          focus: options.nextSessionFocus,
+          rosterLines: buildWorkIdRosterLines(
+            options.workIdPlan.store.list(),
+            options.ctx.cwd,
+          ),
+        })
+      : buildNewSessionPrompt(options.handoffPath),
   )
 }
 
@@ -670,7 +711,7 @@ function getHandoffFocus(text: string): string | undefined {
   return text.replace(HANDOFF_REQUEST_RE, " ").trim() || DEFAULT_HANDOFF_FOCUS
 }
 
-async function runHandoff(
+export async function runHandoff(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
   focus: string,
@@ -741,9 +782,41 @@ async function runHandoff(
     return
   }
 
-  const baseSessionName = await resolveHandoffBaseName(pi, ctx, messages, focus)
+  // Mode-on work-id plan (PI_WORKID_MODE). Unset mode keeps this block inert
+  // and every downstream path byte-identical to the pre-workid behavior.
+  let workIdPlan: WorkIdPlan | undefined
+  if (isWorkIdModeEnabled()) {
+    workIdPlan = await planWorkIdHandoff({ parentSession, focus })
+  }
+  const fallbackBaseName = () => resolveHandoffBaseName(pi, ctx, messages, focus)
+
+  let baseSessionName: string
+  let handoffPath: string
+  if (!workIdPlan) {
+    baseSessionName = await fallbackBaseName()
+    handoffPath = await nextHandoffPath(baseSessionName)
+  } else {
+    baseSessionName = workIdRef(workIdPlan.workId, workIdPlan.generation)
+    handoffPath = await nextHandoffPath(
+      `${workIdPlan.workId}-g${workIdPlan.generation}`,
+    )
+    if (workIdPlan.inherited) {
+      try {
+        await workIdPlan.store.retire(workIdPlan.workId, reason, {
+          handoffDoc: handoffPath,
+        })
+      } catch (error) {
+        console.error(
+          `work-id retire failed for "${workIdPlan.workId}"; continuing with derived naming:`,
+          error,
+        )
+        workIdPlan = undefined
+        baseSessionName = await fallbackBaseName()
+        handoffPath = await nextHandoffPath(baseSessionName)
+      }
+    }
+  }
   const sessionName = formatHandoffSessionName(baseSessionName)
-  const handoffPath = await nextHandoffPath(baseSessionName)
   const inflightRunsSection =
     reason === "budget"
       ? await buildInflightRunsSection(parentSession)
@@ -757,6 +830,7 @@ async function runHandoff(
     inflightRunsSection,
   })
   await writeFile(handoffPath, document, "utf8")
+  const nextSessionFocus = extractNextSessionFocus(document) ?? focus
 
   const backend = resolveHandoffBackend()
   const herdrWorkspaceId =
@@ -775,6 +849,9 @@ async function runHandoff(
       parentSession,
       sessionName,
       workspaceId: herdrWorkspaceId,
+      ...(workIdPlan ? { workIdPlan } : {}),
+      fallbackBaseName,
+      nextSessionFocus,
     })
     const tabId = parentSession
       ? await retireParentInHerdr({ pi, parentSession, baseSessionName })
@@ -801,14 +878,40 @@ async function runHandoff(
     return
   }
 
+  let workIdCommitted = false
   await ctx.newSession({
     ...(parentSession ? { parentSession } : {}),
     setup: async (sessionManager) => {
-      sessionManager.appendSessionInfo(sessionName)
+      let name = sessionName
+      if (workIdPlan) {
+        workIdCommitted = await claimWorkIdForSuccessor(workIdPlan, {
+          sessionId: sessionManager.getSessionFile() ?? "",
+          sessionName,
+          cwd: ctx.cwd,
+          startedAt: new Date().toISOString(),
+        })
+        if (!workIdCommitted) {
+          name = formatHandoffSessionName(await fallbackBaseName())
+        }
+      }
+      sessionManager.appendSessionInfo(name)
     },
     withSession: async (newCtx) => {
       newCtx.ui.notify(`Handoff written: ${handoffPath}`, "info")
-      await newCtx.sendUserMessage(buildNewSessionPrompt(handoffPath))
+      await newCtx.sendUserMessage(
+        workIdCommitted && workIdPlan
+          ? buildWorkIdSeedPrompt({
+              handoffPath,
+              workId: workIdPlan.workId,
+              generation: workIdPlan.generation,
+              focus: nextSessionFocus,
+              rosterLines: buildWorkIdRosterLines(
+                workIdPlan.store.list(),
+                ctx.cwd,
+              ),
+            })
+          : buildNewSessionPrompt(handoffPath),
+      )
     },
   })
 }
