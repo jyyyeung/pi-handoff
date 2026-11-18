@@ -5,7 +5,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
 import { createJiti } from "jiti"
-import { buildWorkIdSeedPrompt } from "../src/workid.ts"
+import { buildWorkIdLaunchSeed } from "../src/workid.ts"
 
 // Herdr-tab backend seed delivery (SEEDARG). The seed must ride the
 // `herdr agent start` argv as pi's positional initial prompt — auto-submitted
@@ -222,23 +222,50 @@ test("tab backend: work-id seed string is passed when a work-id plan commits", a
   assert.ok(seed, "no seed arg recorded")
   assert.equal(
     seed,
-    buildWorkIdSeedPrompt({
+    buildWorkIdLaunchSeed({
+      workIdRef: "ship-the-checkout-fix#g1",
       handoffPath: handoffPathFrom(notifications),
-      workId: "ship-the-checkout-fix",
-      generation: 1,
-      focus: "Ship the checkout fix",
-      rosterLines: [
-        "ship-the-checkout-fix#g1 — [handoff] ship-the-checkout-fix#g1",
-      ],
     }),
   )
   assert.ok(
-    seed.startsWith(
-      "You own workid ship-the-checkout-fix#g1 — peers address you by that id.",
-    ),
-    `ownership line first, got: ${seed.split("\n")[0]}`,
+    seed.startsWith("You own workid ship-the-checkout-fix#g1."),
+    `ownership first, got: ${seed.split("\n")[0]}`,
+  )
+  assert.ok(
+    seed.includes(handoffPathFrom(notifications)),
+    "launch seed must point at the handoff document",
   )
   assert.equal(agentPrompts(execs).length, 0, "no herdr agent prompt call")
+})
+
+test("tab backend: work-id launch seed is single-line with no double quotes", async (t) => {
+  t.after(clearWorkIdEnv)
+  const home = await mkdtemp(join(tmpdir(), "pi-handoff-home-"))
+  const agentDir = await mkdtemp(join(tmpdir(), "pi-handoff-tab-"))
+  const cwd = await mkdtemp(join(tmpdir(), "pi-handoff-cwd-"))
+  process.env["PI_WORKID_MODE"] = "1"
+  process.env["PI_WORKID_HOME"] = home
+  forceTabBackend(t, agentDir)
+  const runHandoff = await loadRunHandoff()
+  const { ctx, pi, execs } = makeTabHarness({ cwd })
+
+  // D5fix: herdr rejects any agent arg containing a newline
+  // (invalid_agent_argument), and double quotes complicate shell encoding —
+  // the launch seed must carry neither.
+  await runHandoff(pi, ctx, "Ship the checkout fix", "voluntary")
+
+  const starts = agentStarts(execs)
+  assert.equal(starts.length, 1)
+  const seed = starts[0].args.at(-1)!
+  assert.ok(seed, "no seed arg recorded")
+  assert.ok(
+    !seed.includes("\n"),
+    `launch seed must not contain a newline, got: ${JSON.stringify(seed)}`,
+  )
+  assert.ok(
+    !seed.includes('"'),
+    `launch seed must not contain a double quote, got: ${JSON.stringify(seed)}`,
+  )
 })
 
 test("tab backend: engagement timeout warns once, never re-prompts or re-starts", async (t) => {

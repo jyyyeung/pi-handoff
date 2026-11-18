@@ -29,6 +29,7 @@ import {
   type HerdrCommandResult,
 } from "./herdr-prompt.js"
 import {
+  buildWorkIdLaunchSeed,
   buildWorkIdRosterLines,
   buildWorkIdSeedPrompt,
   claimWorkIdForSuccessor,
@@ -324,17 +325,17 @@ async function startHandoffInHerdr(options: {
   // start) had its Enter swallowed while the successor TUI was still
   // initializing, so the seed sat as editor prefill — and because a prompt
   // never clears the prefill, any later prompt concatenated onto it.
+  // D5fix: herdr rejects agent args containing newlines
+  // (`invalid_agent_argument`), so the work-id argv seed is one line that
+  // points at the handoff doc instead of the multiline seed prompt.
   const seedPrompt =
     workIdCommitted && options.workIdPlan
-      ? buildWorkIdSeedPrompt({
-          handoffPath: options.handoffPath,
-          workId: options.workIdPlan.workId,
-          generation: options.workIdPlan.generation,
-          focus: options.nextSessionFocus,
-          rosterLines: buildWorkIdRosterLines(
-            options.workIdPlan.store.list(),
-            options.ctx.cwd,
+      ? buildWorkIdLaunchSeed({
+          workIdRef: workIdRef(
+            options.workIdPlan.workId,
+            options.workIdPlan.generation,
           ),
+          handoffPath: options.handoffPath,
         })
       : buildNewSessionPrompt(options.handoffPath)
 

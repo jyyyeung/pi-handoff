@@ -9,6 +9,7 @@ version line at 0.1.0 because it publishes under a different name
 
 ### Fixed
 
+- Tab-backend work-id handoffs now launch the successor with a single-line seed (`You own workid <ref>. Read <handoff path> and continue from it.`); herdr rejects agent arguments containing newlines, so the previous multiline seed made every real work-id handoff fail the tab launch with `invalid_agent_argument` before the successor ever booted. The in-process path still receives the full multiline seed prompt.
 - Tab-backend handoffs deliver the seed as pi's positional initial prompt in the `herdr agent start` argv, so pi auto-submits it once the successor TUI initializes. The old `herdr agent prompt` follow-up had its Enter swallowed during successor boot — the seed sat as unsubmitted editor prefill, and any later prompt concatenated onto it. Post-start verification is now a warn-only engagement check that never re-sends.
 
 ## 0.1.2

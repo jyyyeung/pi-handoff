@@ -178,3 +178,18 @@ export function buildWorkIdSeedPrompt(input: WorkIdSeedPromptInput): string {
   sections.push("Read the handoff, load any suggested skills, then continue the work.")
   return sections.join("\n\n").slice(0, MAX_SEED_PROMPT_CHARS)
 }
+
+export interface WorkIdLaunchSeedInput {
+  workIdRef: string
+  handoffPath: string
+}
+
+/**
+ * One-line successor seed for the `herdr agent start` argv. herdr rejects any
+ * agent argument containing a newline (`invalid_agent_argument`), so the argv
+ * seed must be a single line; the full handoff content lives in the handoff
+ * document the seed points at.
+ */
+export function buildWorkIdLaunchSeed(input: WorkIdLaunchSeedInput): string {
+  return `You own workid ${input.workIdRef}. Read ${input.handoffPath} and continue from it.`
+}
