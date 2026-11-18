@@ -16,7 +16,6 @@ export function getCommandError(stdout: string, stderr: string): string {
 
 const ENGAGEMENT_PROBE_INTERVAL_MS = 2_000
 const ENGAGEMENT_PROBE_COUNT = 6
-const HERDR_PROMPT_ATTEMPTS = 2
 
 export function isEngagedHerdrStatus(status: unknown): boolean {
   return status === "working" || status === "blocked" || status === "done"
@@ -58,32 +57,4 @@ export async function waitForEngagement(
     await delay(intervalMs)
   }
   return false
-}
-
-/**
- * Delivers the handoff prompt at most `HERDR_PROMPT_ATTEMPTS` times.
- *
- * Submission runs without `--wait`, so a zero exit means herdr accepted the
- * input and a nonzero exit means it rejected the submission before sending
- * anything (e.g. `agent_blocked`). Even so, the exit code alone never decides
- * a re-send: observed engagement does. This is the guard against the
- * double-delivery bug where a stalled first submission was followed by an
- * identical second one.
- */
-export async function submitHerdrPrompt(
-  prompt: () => Promise<HerdrCommandResult>,
-  engaged: () => Promise<boolean>,
-  probeCount = ENGAGEMENT_PROBE_COUNT,
-  intervalMs = ENGAGEMENT_PROBE_INTERVAL_MS,
-): Promise<void> {
-  for (let attempt = 1; attempt <= HERDR_PROMPT_ATTEMPTS; attempt += 1) {
-    const result = await prompt()
-    if (result.code === 0) return
-    if (await waitForEngagement(engaged, probeCount, intervalMs)) return
-    if (attempt === HERDR_PROMPT_ATTEMPTS) {
-      throw new Error(
-        `Could not deliver the handoff prompt: ${getCommandError(result.stdout, result.stderr)}`,
-      )
-    }
-  }
 }

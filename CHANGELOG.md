@@ -5,6 +5,12 @@ were the upstream `@tifan/pi-handoff` 2.2.2 tree; the local fork restarts its
 version line at 0.1.0 because it publishes under a different name
 (`@jyyyeung/pi-handoff`) and diverges from upstream.
 
+## Unreleased
+
+### Fixed
+
+- Tab-backend handoffs deliver the seed as pi's positional initial prompt in the `herdr agent start` argv, so pi auto-submits it once the successor TUI initializes. The old `herdr agent prompt` follow-up had its Enter swallowed during successor boot — the seed sat as unsubmitted editor prefill, and any later prompt concatenated onto it. Post-start verification is now a warn-only engagement check that never re-sends.
+
 ## 0.1.2
 
 ### Fixed

@@ -25,7 +25,6 @@ import {
   delay,
   getCommandError,
   herdrAgentEngaged,
-  submitHerdrPrompt,
   waitForEngagement,
   type HerdrCommandResult,
 } from "./herdr-prompt.js"
@@ -320,6 +319,25 @@ async function startHandoffInHerdr(options: {
   const agentName = `handoff-${randomUUID().slice(0, 8)}`
   const model = options.ctx.model!
 
+  // SEEDARG: the seed is pi's positional initial prompt, delivered through
+  // the launch argv below. The old delivery (`herdr agent prompt` right after
+  // start) had its Enter swallowed while the successor TUI was still
+  // initializing, so the seed sat as editor prefill — and because a prompt
+  // never clears the prefill, any later prompt concatenated onto it.
+  const seedPrompt =
+    workIdCommitted && options.workIdPlan
+      ? buildWorkIdSeedPrompt({
+          handoffPath: options.handoffPath,
+          workId: options.workIdPlan.workId,
+          generation: options.workIdPlan.generation,
+          focus: options.nextSessionFocus,
+          rosterLines: buildWorkIdRosterLines(
+            options.workIdPlan.store.list(),
+            options.ctx.cwd,
+          ),
+        })
+      : buildNewSessionPrompt(options.handoffPath)
+
   await startHerdrAgentWithRetry(() =>
     options.pi.exec(
       "herdr",
@@ -340,48 +358,22 @@ async function startHandoffInHerdr(options: {
         model.provider,
         "--model",
         model.id,
+        // SEEDARG: final positional AGENT_ARG — pi auto-submits it as the
+        // initial prompt once the TUI finishes initializing.
+        seedPrompt,
       ],
       { timeout: 35_000 },
     ),
   )
 
-  await promptHerdrAgentVerified(
-    options.pi,
-    agentName,
-    workIdCommitted && options.workIdPlan
-      ? buildWorkIdSeedPrompt({
-          handoffPath: options.handoffPath,
-          workId: options.workIdPlan.workId,
-          generation: options.workIdPlan.generation,
-          focus: options.nextSessionFocus,
-          rosterLines: buildWorkIdRosterLines(
-            options.workIdPlan.store.list(),
-            options.ctx.cwd,
-          ),
-        })
-      : buildNewSessionPrompt(options.handoffPath),
+  // SEEDARG: verification is warn-only. pi owns the submit now, so never
+  // re-send — a second prompt would concatenate onto the delivered seed.
+  const engaged = await waitForEngagement(() =>
+    herdrAgentEngaged(options.pi, agentName),
   )
-}
-
-const HANDOFF_PROMPT_SUBMIT_TIMEOUT_MS = 10_000
-
-async function promptHerdrAgentVerified(
-  pi: ExtensionAPI,
-  agentName: string,
-  text: string,
-): Promise<void> {
-  const promptArgs = ["agent", "prompt", agentName, text]
-  await submitHerdrPrompt(
-    () =>
-      pi.exec("herdr", promptArgs, {
-        timeout: HANDOFF_PROMPT_SUBMIT_TIMEOUT_MS,
-      }),
-    () => herdrAgentEngaged(pi, agentName),
-  )
-  const engaged = await waitForEngagement(() => herdrAgentEngaged(pi, agentName))
   if (!engaged) {
     console.error(
-      `Handoff successor ${agentName} did not confirm the prompt; continuing without a re-send.`,
+      `Handoff successor ${agentName} seed prompt not confirmed engaged; the successor may need a manual submit.`,
     )
   }
 }
