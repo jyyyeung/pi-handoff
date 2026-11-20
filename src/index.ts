@@ -39,6 +39,7 @@ import {
   workIdRef,
   type WorkIdPlan,
 } from "./workid.js"
+import { buildPlainLaunchSeed } from "./launch-seed.js"
 
 export { resolveHandoffBackend } from "./backend.js"
 export type { HandoffBackend } from "./backend.js"
@@ -193,6 +194,9 @@ function buildNewSessionPrompt(handoffPath: string): string {
   ].join("\n\n")
 }
 
+/** One-line plain seed for the `herdr agent start` argv — see src/launch-seed.ts. */
+export { buildPlainLaunchSeed } from "./launch-seed.js"
+
 type HerdrTabCreateResponse = {
   result?: {
     root_pane?: {
@@ -337,7 +341,7 @@ async function startHandoffInHerdr(options: {
           ),
           handoffPath: options.handoffPath,
         })
-      : buildNewSessionPrompt(options.handoffPath)
+      : buildPlainLaunchSeed(options.handoffPath)
 
   await startHerdrAgentWithRetry(() =>
     options.pi.exec(

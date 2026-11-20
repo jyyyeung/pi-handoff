@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
 import { createJiti } from "jiti"
+import { buildPlainLaunchSeed } from "../src/launch-seed.ts"
 import { buildWorkIdLaunchSeed } from "../src/workid.ts"
 
 // Herdr-tab backend seed delivery (SEEDARG). The seed must ride the
@@ -192,13 +193,12 @@ test("tab backend: seed is the last positional arg after `--` in the start argv"
 
   assert.equal(args.at(-1), seed, "seed must be the final argv element")
   assert.ok(!seed.startsWith("--"), "seed must be a positional, not a flag")
-  assert.equal(
-    seed,
-    [
-      "Continue from this handoff:",
-      handoffPathFrom(notifications),
-      "Read the handoff, load any suggested skills, then continue the work.",
-    ].join("\n\n"),
+  // D5fix: herdr rejects any agent arg containing a newline
+  // (invalid_agent_argument) — plain seeds follow the work-id seed rule.
+  assert.equal(seed, buildPlainLaunchSeed(handoffPathFrom(notifications)))
+  assert.ok(
+    !seed.includes("\n"),
+    `launch seed must not contain a newline, got: ${JSON.stringify(seed)}`,
   )
   assert.equal(agentPrompts(execs).length, 0, "no herdr agent prompt call")
 })
